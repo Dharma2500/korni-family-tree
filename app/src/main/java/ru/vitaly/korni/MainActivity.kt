@@ -1,11 +1,14 @@
 package ru.vitaly.korni
 
 import android.os.Bundle
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -59,8 +62,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -523,6 +530,16 @@ private fun FamilyTreeCanvas(
 ) {
     val nodes = remember(family) { TreeLayout.build(family) }
     val density = LocalDensity.current.density
+    val context = LocalContext.current
+    var photoBitmaps by remember { mutableStateOf<Map<String, Bitmap>>(emptyMap()) }
+    LaunchedEffect(family.people.map { it.id to it.photoUri }) {
+        val withPhotos = family.people.filter { it.photoUri.isNotBlank() }
+        photoBitmaps = withContext(Dispatchers.IO) {
+            withPhotos.mapNotNull { person ->
+                PhotoLoader.loadThumbnail(context, person.photoUri)?.let { person.id to it }
+            }.toMap()
+        }
+    }
     var scale by remember { mutableFloatStateOf(0.65f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -580,7 +597,7 @@ private fun FamilyTreeCanvas(
             canvas.translate(offset.x, offset.y)
             canvas.scale(scale, scale)
             canvas.scale(density, density)
-            TreeRenderer.draw(canvas, family, nodes, selectedPersonId)
+            TreeRenderer.draw(canvas, family, nodes, selectedPersonId, photoBitmaps)
             canvas.restoreToCount(save)
         }
 
@@ -705,7 +722,13 @@ private fun PersonEditorDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedButton(onClick = onPickPhoto, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (photoUri.isBlank()) "Добавить фотографию" else "Фотография выбрана · заменить")
+                    Text(if (photoUri.isBlank()) "Добавить фотографию" else "Заменить фотографию")
+                }
+                if (photoUri.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        FamilyPhoto(photoUri, 56.dp)
+                        Text("Фотография появится в карточке человека и в PDF.", color = Muted, fontSize = 12.sp)
+                    }
                 }
                 OutlinedTextField(
                     value = notes,
@@ -775,6 +798,9 @@ private fun PersonDetailsDialog(
         title = { Text(person.fullName(), fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                if (person.photoUri.isNotBlank()) {
+                    FamilyPhoto(person.photoUri, 88.dp)
+                }
                 Text(
                     when (person.gender) {
                         Gender.MALE -> "Мужчина"
@@ -854,6 +880,26 @@ private fun SearchDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } }
     )
+}
+
+@Composable
+private fun FamilyPhoto(uri: String, diameter: Dp) {
+    val context = LocalContext.current
+    var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(uri) {
+        bitmap = withContext(Dispatchers.IO) { PhotoLoader.loadThumbnail(context, uri) }
+    }
+    val image = bitmap
+    if (image != null) {
+        Image(
+            bitmap = image.asImageBitmap(),
+            contentDescription = "Фотография родственника",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(diameter).clip(CircleShape)
+        )
+    } else {
+        Text("Фотография не загрузилась", color = Muted, fontSize = 11.sp)
+    }
 }
 
 private fun personWord(count: Int): String {

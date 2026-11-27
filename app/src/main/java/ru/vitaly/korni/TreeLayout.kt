@@ -16,22 +16,38 @@ object TreeLayout {
     fun build(data: FamilyData): List<TreeNode> {
         if (data.people.isEmpty()) return emptyList()
 
-        val peopleById = data.people.associateBy { it.id }
         val parentLinks = data.links.filter { it.type == LinkType.PARENT }
+        val sameGenerationLinks = data.links.filter {
+            it.type == LinkType.SPOUSE || it.type == LinkType.SIBLING
+        }
         val levels = data.people.associate { it.id to 0 }.toMutableMap()
 
-        // Longest known parent chain determines a person's generation.
-        repeat(data.people.size) {
+        // Супруги и братья/сёстры располагаются на одном уровне.
+        // Родительские связи задают переход к следующему поколению.
+        for (iteration in data.people.indices) {
             var changed = false
+
+            sameGenerationLinks.forEach { link ->
+                val commonLevel = maxOf(levels[link.fromId] ?: 0, levels[link.toId] ?: 0)
+                if ((levels[link.fromId] ?: 0) != commonLevel) {
+                    levels[link.fromId] = commonLevel
+                    changed = true
+                }
+                if ((levels[link.toId] ?: 0) != commonLevel) {
+                    levels[link.toId] = commonLevel
+                    changed = true
+                }
+            }
+
             parentLinks.forEach { link ->
-                val parentLevel = levels[link.fromId] ?: 0
-                val target = parentLevel + 1
+                val target = (levels[link.fromId] ?: 0) + 1
                 if ((levels[link.toId] ?: 0) < target) {
                     levels[link.toId] = target
                     changed = true
                 }
             }
-            if (!changed) return@repeat
+
+            if (!changed) break
         }
 
         val byLevel = data.people.groupBy { levels[it.id] ?: 0 }.toSortedMap()

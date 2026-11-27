@@ -5,6 +5,7 @@ import android.net.Uri
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.Bitmap
 import android.graphics.pdf.PdfDocument
 
 object PdfExporter {
@@ -19,6 +20,10 @@ object PdfExporter {
         val columns = kotlin.math.ceil(treeWidth / tileWidth).toInt().coerceAtLeast(1)
         val rows = kotlin.math.ceil(treeHeight / tileHeight).toInt().coerceAtLeast(1)
         val totalPages = columns * rows
+        val photos: Map<String, Bitmap> = data.people.mapNotNull { person ->
+            if (person.photoUri.isBlank()) null
+            else PhotoLoader.loadThumbnail(context, person.photoUri)?.let { person.id to it }
+        }.toMap()
         val document = PdfDocument()
 
         try {
@@ -40,11 +45,14 @@ object PdfExporter {
                         textSize = 9f
                     }
                     canvas.drawText("Корни • семейное древо", 24f, 28f, headerPaint)
-                    canvas.drawText("Лист $pageNumber из $totalPages • листы можно соединить по перекрывающимся краям", 24f, 44f, notePaint)
+                    canvas.drawText(
+                        "Лист " + pageNumber + " из " + totalPages + " • листы можно соединить по перекрывающимся краям",
+                        24f, 44f, notePaint
+                    )
 
                     canvas.save()
                     canvas.translate(24f - column * tileWidth, 58f - row * tileHeight)
-                    TreeRenderer.draw(canvas, data, nodes)
+                    TreeRenderer.draw(canvas, data, nodes, photos = photos)
                     canvas.restore()
 
                     document.finishPage(page)
