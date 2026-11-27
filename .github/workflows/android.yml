@@ -23,8 +23,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Установить Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Проверить Android SDK на сервере GitHub
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME/platforms/android-35"
 
       - name: Установить Gradle
         uses: gradle/actions/setup-gradle@v4
